@@ -1,0 +1,214 @@
+//----------------------------------
+//------- Code V7 - magnum ---------
+//----------------------------------
+
+//Fonction pour savoir si l'ennemi est à porté de tir: return boolean
+function isInRange(enemy, Cell) {
+	var distanceEnemy=getCellDistance(Cell, getCell(enemy));
+	var distanceRange=getWeaponMaxRange(getWeapon());
+	if(distanceEnemy<=distanceRange) {
+		return true;
+	} else {
+		return false;
+	}
+}
+
+//Fonction pour voir si on peut tirer sur un leek si on se déplace du max de MP
+function CanYouShootHimIfYouMove(enemy) {
+	var mouvementPossible=getTotalMP();
+	var cellEnemy=getCell(enemy);
+	var path=getPath(getCell(), cellEnemy);
+	var cellMax=path[mouvementPossible-1];
+	if (cellMax==null) {
+		cellMax=getCell();
+	}
+	return isInRange(enemy, cellMax);
+}
+
+//Fonction pour récupérer le total de dégât possible sur un leek 
+function getTotalDegatsPossiblesSur(enemy) {
+	//On récupère les dégâts moyen de l'arme
+	var DegatsMoyensArme=getWeaponEffects(getWeapon());
+	DegatsMoyensArme=(DegatsMoyensArme[0][1]+DegatsMoyensArme[0][2])/2;
+	//On multiplie par la force en %
+	DegatsMoyensArme=(DegatsMoyensArme*((getStrength()/100)+1));
+	//On enlève les boucliers relatifs et absolus de l'adversaire'
+	var bouclierRelatif=getRelativeShield(enemy);
+	var bouclierAbsolu=getAbsoluteShield(enemy);
+	DegatsMoyensArme=DegatsMoyensArme*(1-bouclierRelatif/100)-bouclierAbsolu;
+	//On calcule le nombre de fois où on peut tirer selon les TP actuels
+	var CoutArme=getWeaponCost(getWeapon());
+	var TPrestant=getTP();
+	var NombreAttaques=floor(TPrestant/CoutArme);
+	//On calcule le nombre de dégât possibles
+	var totaDegatPossible=NombreAttaques*DegatsMoyensArme;
+	return totaDegatPossible;
+}
+
+//pour savoir à combien de case le leek va avancer le prochain tour et nous tirer dessus: pour la rencontre surtout et pour tirer en premier
+//function canShootNexTurn(leek) {
+//	var travel=getTotalMP(leek);
+//}
+
+//Pour savoir de quelle ligne s'éloigner s'il a une arme de tir en ligne
+function findLineAndGetAway(enemy) {
+	var x = getCellX(getCell());
+	var y = getCellY(getCell());
+
+	var xEnemy = getCellX(getCell(enemy));
+	var yEnemy = getCellY(getCell(enemy));
+
+	if(x == xEnemy) {
+		if( y < yEnemy) {
+			y = y - 2; // utile pour moveAwayFromLine 
+		} else {
+			y = y + 2; // utile pour moveAwayFromLine
+		}
+	} else if(y == yEnemy) {
+		if( x < xEnemy) {
+			x = x - 2; // utile pour moveAwayFromLine
+		} else {
+			x = x + 2; // utile pour moveAwayFromLine
+		}
+	}
+
+	var cell1 = getCellFromXY(x, y);
+
+	return moveAwayFromLine(cell1, getCell(enemy), 1);
+}
+
+//On dit bonjour
+if(getTurn()==1) {
+	say("Bonjour cher adversaire poireau.");
+}
+
+// On récupère l'ennemi le plus proche
+var enemy = getNearestEnemy();
+
+// On prend le pistolet ou le machine gun
+
+if (isOnSameLine(getCell(), getCell(enemy)) and lineOfSight(getCell(), getCell(enemy)) and getCellDistance(getCell(getLeek()), getCell(enemy))<=8){
+	if (getWeapon()!=WEAPON_SHOTGUN) {
+	setWeapon(WEAPON_SHOTGUN);
+	}
+} else if(getWeapon()!=WEAPON_MAGNUM){
+	setWeapon(WEAPON_MAGNUM); // Attention : coûte 1 PT
+}
+
+var pourcentageLife=1-((getTotalLife()-getLife())/getTotalLife());
+
+// Déclaration des variables utilitaires
+var MPactuels=getMP();
+var TPactuels=getTP();
+var resultFire=null;
+var resultChipAttack=null;
+var resultChipHeal=null;
+var resultChipDefense=null;
+var resultChipDefense2=null;
+var resultChipReinforcement=null;
+var haveFired=false;
+var needHeal=false;
+var resultMove=null;
+var resultMoveLine=null;
+
+while(MPactuels!=0) {
+	
+	//On regarde si on peut tuer le leek adversaire à ce tour en utilisant tout les TP
+	CanYouShootHimIfYouMove(enemy);
+	
+	var TotalDegat=getTotalDegatsPossiblesSur(enemy);
+	if (getLife(enemy)<=TotalDegat and (canUseWeapon(enemy) or CanYouShootHimIfYouMove(enemy))) {
+		pourcentageLife=0.3;
+		resultChipDefense=USE_NOT_ENOUGH_TP;
+		resultChipDefense2=USE_NOT_ENOUGH_TP;
+		resultChipReinforcement=USE_NOT_ENOUGH_TP;
+	}
+	
+	//Regarde si le leek a besoin de soin et si oui le soigne
+	if (pourcentageLife<0.3) {
+		needHeal=true;
+		if(resultChipHeal!=USE_NOT_ENOUGH_TP and canUseChip(CHIP_CURE, getLeek())) {
+			resultChipHeal=useChip(CHIP_CURE, getLeek());
+		}
+		if(resultChipHeal!=USE_NOT_ENOUGH_TP and canUseChip(CHIP_DRIP, getLeek())) {
+			resultChipHeal=useChip(CHIP_DRIP, getLeek());
+		}
+		if(resultChipHeal!=USE_NOT_ENOUGH_TP and canUseChip(CHIP_BANDAGE, getLeek())) {
+			resultChipHeal=useChip(CHIP_BANDAGE, getLeek());
+		}
+	}
+	
+	//Pour utiliser une puce défense shield
+	if(canUseChip(CHIP_SHIELD, getLeek()) and 		resultChipDefense2!=USE_NOT_ENOUGH_TP and getTurn()>1) {
+		resultChipDefense2=useChip(CHIP_SHIELD, getLeek());
+	}
+	
+	//Pour utiliser une puce défense helmet
+	if(canUseChip(CHIP_HELMET, getLeek()) and 		resultChipDefense!=USE_NOT_ENOUGH_TP and getTurn()>2) {
+		resultChipDefense=useChip(CHIP_HELMET, getLeek());
+	}
+	
+	//Pour utiliser une puce de renforcement de force
+	if(canUseChip(CHIP_PROTEIN, getLeek()) and 		resultChipReinforcement!=USE_NOT_ENOUGH_TP and getTurn()>1) {
+		resultChipDefense=useChip(CHIP_PROTEIN, getLeek());
+	}
+	
+	MPactuels=getMP();
+	
+	// On essaye de lui tirer dessus !
+	while(canUseWeapon(enemy) and resultFire!=USE_NOT_ENOUGH_TP) {
+		resultFire=useWeapon(enemy);
+		//On vérifie s'il a tiré pour savoir si on doit partir le plus loin possible
+		haveFired=true;
+	}
+	
+	if (isDead(enemy)) {
+		say("Tu n'étais pas de taille à m'affronter!");
+		break;
+	}
+	
+	var LeekInRange=isInRange(enemy, getCell());
+	
+	//Pour tuer ceux qui ne bougent pas
+	if (getTurn()>55) {
+		LeekInRange=false;
+	}
+	
+	//On bouge d'une case si l'adversaire a une arme en ligne (gatling, ...) et on reste à distance pour être pile à porté
+	if (isInlineWeapon(getWeapon(enemy)) and LeekInRange and resultMoveLine!=0) {
+		resultMoveLine=findLineAndGetAway(enemy);
+	}
+	else if((MPactuels!=0 and LeekInRange and resultMove!=0) or (haveFired and resultMove!=0) or (needHeal and resultMove!=0)){
+		resultMove=moveAwayFrom(enemy,2);
+		//Si on ne peut plus reculer resultMove sera égale à 0
+	} else if(MPactuels!=0) {
+		resultMove=moveToward(enemy,1);
+		//Si on ne peut plus avancer
+		if (resultMove==0) {
+			resultMove=moveAwayFrom(enemy);
+			//Si on ne peut plus bouger on quitte la boucle while
+			if (resultMove==0) {
+				break;
+			}
+		}
+	} 
+	
+	MPactuels=getMP();
+	
+	//Pour utiliser une puce spark si on a pas tiré
+	while(MPactuels==0 and canUseChip(CHIP_SPARK, enemy) and 		resultChipAttack!=USE_NOT_ENOUGH_TP) {
+		resultChipAttack=useChip(CHIP_SPARK, enemy);
+	}
+	
+	//Pour utiliser du soin si on a rien à utiliser d'autre
+	if(MPactuels==0 and resultChipHeal!=USE_NOT_ENOUGH_TP and canUseChip(CHIP_CURE, getLeek()) and pourcentageLife!=1) {
+			resultChipHeal=useChip(CHIP_CURE, getLeek());
+		}
+	if(MPactuels==0 and resultChipHeal!=USE_NOT_ENOUGH_TP and canUseChip(CHIP_BANDAGE, getLeek()) and pourcentageLife!=1) {
+			resultChipHeal=useChip(CHIP_BANDAGE, getLeek());
+		}
+
+	needHeal=false;
+}
+resultMove=null;
+haveFired=false;
